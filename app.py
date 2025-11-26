@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import os
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -10,9 +11,8 @@ HF_API_KEY = os.getenv("HF_API_KEY")
 if not HF_API_KEY:
     raise ValueError("HF_API_KEY environment variable not set!")
 
-# You can pick any model available on Hugging Face Inference API
-# Some free ones: 'facebook/opt-1.3b', 'tiiuae/falcon-7b-instruct', 'mpt-7b-chat'
-HF_MODEL = "facebook/opt-1.3b"
+# Pick a free, smaller model for fast responses
+HF_MODEL = "tiiuae/falcon-7b-instruct"  # works well for chat
 
 HEADERS = {
     "Authorization": f"Bearer {HF_API_KEY}"
@@ -26,7 +26,8 @@ def chat():
         return jsonify({"error": "No message provided"}), 400
 
     payload = {
-        "inputs": user_message
+        "inputs": user_message,
+        "parameters": {"max_new_tokens": 200}
     }
 
     try:
@@ -36,20 +37,30 @@ def chat():
             json=payload,
             timeout=60
         )
-        response_json = response.json()
-        if "error" in response_json:
-            return jsonify({"error": response_json["error"]}), 500
-        # Hugging Face returns output in different formats depending on model
-        if isinstance(response_json, list):
-            reply = response_json[0].get("generated_text", "Sorry, I couldn't respond.")
-        elif isinstance(response_json, dict) and "generated_text" in response_json:
-            reply = response_json["generated_text"]
+        res_json = response.json()
+
+        # Some models return {'error': 'message'} if not ready
+        if "error" in res_json:
+            return jsonify({"error": res_json["error"]}), 500
+
+        # Try to extract generated_text
+        if isinstance(res_json, dict) and "generated_text" in res_json:
+            reply = res_json["generated_text"]
+        elif isinstance(res_json, list) and "generated_text" in res_json[0]:
+            reply = res_json[0]["generated_text"]
         else:
-            reply = str(response_json)
+            reply = str(res_json)
+
+        # Trim the user's message from the response if model echoes
+        if reply.lower().startswith(user_message.lower()):
+            reply = reply[len(user_message):].strip()
+
         return jsonify({"reply": reply})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
