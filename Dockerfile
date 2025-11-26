@@ -4,17 +4,14 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY . /app
+# Copy files
+COPY app.py requirements.txt ./
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Set environment variable for Hugging Face API (optional, can also set in Render)
-# ENV HF_API_KEY=your_huggingface_api_key
-
-# Expose the port Flask will run on
+# Expose port
 EXPOSE 5000
 
-# Command to run the app
+# Run the app
 CMD ["python", "app.py"]
